@@ -9,44 +9,13 @@
 The implementation follows a clean-architecture layering: `domain` holds the `Joke` value object with no I/O; `ports` defines the `JokeGenerator` protocol and `JokeGenerationError` that `application` depends on; `adapters/inbound/cli.py` drives the use case from the terminal; `adapters/outbound/anthropic_joke_generator.py` implements the port against the Anthropic API, translating SDK exceptions into `JokeGenerationError` so no other layer depends on the `anthropic` package.
 
 ```mermaid
-flowchart TB
-    User(("User"))
-
-    subgraph inbound ["adapters/inbound"]
-        CLI["cli.py<br/>get_joke_topic(), main()"]
-    end
-
-    subgraph application ["application"]
-        UseCase["TellJokeUseCase.execute(topic)"]
-    end
-
-    subgraph domain ["domain"]
-        Joke["Joke(topic, text)"]
-    end
-
-    subgraph ports ["ports"]
-        Port["JokeGenerator (Protocol)<br/>JokeGenerationError"]
-    end
-
-    subgraph outbound ["adapters/outbound"]
-        Gen["AnthropicJokeGenerator"]
-        Prompt["resources/system_prompt.txt"]
-    end
-
-    API["Anthropic API"]
-
-    User -->|topic| CLI
-    CLI -->|execute(topic)| UseCase
-    UseCase -->|depends on| Port
-    UseCase -->|builds| Joke
-    Gen -.->|implements| Port
-    CLI -->|constructs and injects| Gen
-    Gen --> Prompt
-    Gen -->|messages.create| API
-    API -->|joke text / SDK errors| Gen
-    Gen -->|text or JokeGenerationError| UseCase
-    UseCase -->|Joke or JokeGenerationError| CLI
-    CLI -->|prints joke.text or error message| User
+flowchart LR
+    User(("User")) --> CLI["Inbound Adapter<br/>(CLI)"]
+    CLI --> App["Application"]
+    App --> Domain["Domain"]
+    App -.-> Ports["Ports"]
+    Ports -.-> Outbound["Outbound Adapter<br/>(Anthropic)"]
+    Outbound --> API["Anthropic API"]
 ```
 
 ## Goals / Non-Goals
