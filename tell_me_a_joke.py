@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 
 import os
+from pathlib import Path
 
 import anthropic
 from dotenv import load_dotenv
 
 DEFAULT_MODEL = "claude-haiku-4-5"
 DEFAULT_EFFORT = "low"
+SYSTEM_PROMPT_PATH = Path(__file__).parent / "resources" / "system_prompt.txt"
+SYSTEM_PROMPT = SYSTEM_PROMPT_PATH.read_text().strip()
 
 
 def get_joke_topic() -> str:
@@ -35,10 +38,7 @@ def generate_joke(topic: str) -> str:
     response = client.messages.create(
         model=model,
         max_tokens=512,
-        system=(
-            "You are a comedian. Respond with only a short joke about the "
-            "given topic. No preamble or commentary."
-        ),
+        system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": f"Tell me a joke about: {topic}"}],
         **request_kwargs,
     )
