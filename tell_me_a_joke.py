@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 
-def get_joke_context() -> str:
-    return input("Enter a joke context: ")
+def get_joke_topic() -> str:
+    return input("Enter a joke topic: ")
 
 
 def main() -> None:
-    joke_context = get_joke_context()
-    print(f"i got the context, i will tell a joke about this: {joke_context}")
+    joke_topic = get_joke_topic()
+    print(f"i got the topic, i will tell a joke about this: {joke_topic}")
 
 
 if __name__ == "__main__":
