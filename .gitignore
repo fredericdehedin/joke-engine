@@ -17,6 +17,9 @@ env/
 .idea/
 *.iml
 
+# Local secrets/config - never commit
+.env
+
 # OS
 .DS_Store
 
