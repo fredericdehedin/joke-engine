@@ -13,8 +13,7 @@ flowchart TB
     User(("User"))
 
     subgraph inbound ["adapters/inbound"]
-        CLI["cli.py
-        get_joke_topic(), main()"]
+        CLI["cli.py<br/>get_joke_topic(), main()"]
     end
 
     subgraph application ["application"]
@@ -26,8 +25,7 @@ flowchart TB
     end
 
     subgraph ports ["ports"]
-        Port["JokeGenerator (Protocol)
-        JokeGenerationError"]
+        Port["JokeGenerator (Protocol)<br/>JokeGenerationError"]
     end
 
     subgraph outbound ["adapters/outbound"]
@@ -42,7 +40,7 @@ flowchart TB
     UseCase -->|depends on| Port
     UseCase -->|builds| Joke
     Gen -.->|implements| Port
-    CLI -->|constructs & injects| Gen
+    CLI -->|constructs and injects| Gen
     Gen --> Prompt
     Gen -->|messages.create| API
     API -->|joke text / SDK errors| Gen
