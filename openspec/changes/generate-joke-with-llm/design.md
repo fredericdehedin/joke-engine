@@ -4,6 +4,53 @@
 
 `tell_me_a_joke.py` currently has `get_joke_topic()` (reads a topic via `input()`) and `main()` (prints a fixed echo string using that topic). See proposal.md - Why/What Changes for the motivation. The user has an `ANTHROPIC_API_KEY` available in their environment. The project already depends on `pytest` for tests (`requirements.txt`); no HTTP or LLM client library is present yet.
 
+## Architecture
+
+The implementation follows a clean-architecture layering: `domain` holds the `Joke` value object with no I/O; `ports` defines the `JokeGenerator` protocol and `JokeGenerationError` that `application` depends on; `adapters/inbound/cli.py` drives the use case from the terminal; `adapters/outbound/anthropic_joke_generator.py` implements the port against the Anthropic API, translating SDK exceptions into `JokeGenerationError` so no other layer depends on the `anthropic` package.
+
+```mermaid
+flowchart TB
+    User(("User"))
+
+    subgraph inbound ["adapters/inbound"]
+        CLI["cli.py
+        get_joke_topic(), main()"]
+    end
+
+    subgraph application ["application"]
+        UseCase["TellJokeUseCase.execute(topic)"]
+    end
+
+    subgraph domain ["domain"]
+        Joke["Joke(topic, text)"]
+    end
+
+    subgraph ports ["ports"]
+        Port["JokeGenerator (Protocol)
+        JokeGenerationError"]
+    end
+
+    subgraph outbound ["adapters/outbound"]
+        Gen["AnthropicJokeGenerator"]
+        Prompt["resources/system_prompt.txt"]
+    end
+
+    API["Anthropic API"]
+
+    User -->|topic| CLI
+    CLI -->|execute(topic)| UseCase
+    UseCase -->|depends on| Port
+    UseCase -->|builds| Joke
+    Gen -.->|implements| Port
+    CLI -->|constructs & injects| Gen
+    Gen --> Prompt
+    Gen -->|messages.create| API
+    API -->|joke text / SDK errors| Gen
+    Gen -->|text or JokeGenerationError| UseCase
+    UseCase -->|Joke or JokeGenerationError| CLI
+    CLI -->|prints joke.text or error message| User
+```
+
 ## Goals / Non-Goals
 
 **Goals:**
