@@ -128,6 +128,32 @@ def test_refine_wraps_api_failure_in_joke_generation_error(monkeypatch):
         LangGraphJokeGenerator().refine(generation, RewriteStyle.DARK_CRUDE)
 
 
+@pytest.mark.parametrize(
+    "content",
+    [
+        pytest.param("   ", id="whitespace only"),
+        pytest.param("", id="empty"),
+        pytest.param([{"type": "thinking", "thinking": "hmm"}], id="no text block"),
+    ],
+)
+def test_start_wraps_an_unusable_response_in_joke_generation_error(monkeypatch, content):
+    monkeypatch.setattr(
+        langgraph_joke_generator, "ChatAnthropic", _fake_chat_model_factory(response=content)
+    )
+
+    with pytest.raises(JokeGenerationError):
+        LangGraphJokeGenerator().start("cats")
+
+
+def test_refine_wraps_an_unusable_response_in_joke_generation_error(monkeypatch):
+    monkeypatch.setattr(
+        langgraph_joke_generator, "ChatAnthropic", _fake_chat_model_factory(response="   ")
+    )
+
+    with pytest.raises(JokeGenerationError):
+        LangGraphJokeGenerator().refine(_a_generation(), RewriteStyle.DARK_CRUDE)
+
+
 def test_default_model_and_effort_are_cost_efficient(monkeypatch):
     monkeypatch.delenv("JOKE_ENGINE_MODEL", raising=False)
     monkeypatch.delenv("JOKE_ENGINE_EFFORT", raising=False)

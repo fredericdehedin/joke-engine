@@ -1,4 +1,5 @@
 import os
+from contextlib import contextmanager
 from pathlib import Path
 from typing import TypedDict
 
@@ -60,6 +61,20 @@ def _extract_text(content) -> str:
     return "".join(parts)
 
 
+@contextmanager
+def _as_generation_error():
+    """Translate domain validation failures into the port's error type.
+
+    A reply that is empty or whitespace-only -- a truncated response, or one
+    the model filtered -- must reach callers as a JokeGenerationError like any
+    other failure, not as a raw ValueError.
+    """
+    try:
+        yield
+    except ValueError as e:
+        raise JokeGenerationError(f"the model returned an unusable joke: {e}") from e
+
+
 def _generate(state: _GraphState) -> dict:
     model = resolve_model()
     model_kwargs = {}
@@ -92,17 +107,19 @@ class LangGraphJokeGenerator:
 
     def start(self, topic: str) -> JokeGeneration:
         joke_text = self._run(SYSTEM_PROMPT, f"Tell me a joke about: {topic}")
-        joke = Joke(topic=topic, text=joke_text)
-        return JokeGeneration(topic=topic, revisions=(Revision(joke=joke, style=None),))
+        with _as_generation_error():
+            joke = Joke(topic=topic, text=joke_text)
+            return JokeGeneration(topic=topic, revisions=(Revision(joke=joke, style=None),))
 
     def refine(self, generation: JokeGeneration, style: RewriteStyle) -> JokeGeneration:
         latest_joke = generation.revisions[-1].joke
         joke_text = self._run(REWRITE_SYSTEM_PROMPTS[style], latest_joke.text)
-        joke = Joke(topic=generation.topic, text=joke_text)
-        return JokeGeneration(
-            topic=generation.topic,
-            revisions=generation.revisions + (Revision(joke=joke, style=style),),
-        )
+        with _as_generation_error():
+            joke = Joke(topic=generation.topic, text=joke_text)
+            return JokeGeneration(
+                topic=generation.topic,
+                revisions=generation.revisions + (Revision(joke=joke, style=style),),
+            )
 
     def _run(self, system_prompt: str, user_message: str) -> str:
         try:
