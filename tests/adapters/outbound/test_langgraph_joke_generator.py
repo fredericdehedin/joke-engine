@@ -1,3 +1,4 @@
+import inspect
 from types import SimpleNamespace
 
 import anthropic
@@ -38,8 +39,26 @@ def _fake_request():
     return httpx2.Request("POST", "https://api.anthropic.com/v1/messages")
 
 
+def _a_generation(text="original joke"):
+    return JokeGeneration(
+        topic="cats",
+        revisions=(Revision(joke=Joke(topic="cats", text=text), style=None),),
+    )
+
+
 def test_langgraph_joke_generator_satisfies_protocol():
-    assert isinstance(LangGraphJokeGenerator(), JokeGenerator)
+    generator: JokeGenerator = LangGraphJokeGenerator()
+    assert isinstance(generator, JokeGenerator)
+
+
+@pytest.mark.parametrize("method_name", ["start", "refine"])
+def test_adapter_methods_match_the_port_signature(method_name):
+    # runtime_checkable isinstance() only checks that attributes of these names
+    # exist, so compare parameters and annotations explicitly.
+    expected = inspect.signature(getattr(JokeGenerator, method_name))
+    actual = inspect.signature(getattr(LangGraphJokeGenerator, method_name))
+
+    assert actual == expected
 
 
 def test_start_returns_generation_with_one_revision(monkeypatch):
@@ -133,3 +152,51 @@ def test_model_and_effort_overrides_are_applied(monkeypatch):
 
     assert FakeChatModel.last_instance.init_kwargs["model"] == "claude-sonnet-5"
     assert FakeChatModel.last_instance.init_kwargs["output_config"] == {"effort": "high"}
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        pytest.param("a joke", id="plain string"),
+        pytest.param([{"type": "text", "text": "a joke"}], id="single text block"),
+        pytest.param(
+            [{"type": "thinking", "thinking": "hmm"}, {"type": "text", "text": "a joke"}],
+            id="thinking block first",
+        ),
+        pytest.param(
+            [{"type": "text", "text": "a "}, {"type": "text", "text": "joke"}],
+            id="several text blocks",
+        ),
+        pytest.param(
+            [SimpleNamespace(type="thinking", thinking="hmm"), SimpleNamespace(type="text", text="a joke")],
+            id="block objects",
+        ),
+    ],
+)
+def test_start_extracts_the_text_blocks_of_the_response(monkeypatch, content):
+    # langchain_anthropic only hands back a plain string when the reply holds
+    # exactly one text block; enabling effort/thinking adds a second block.
+    monkeypatch.setattr(
+        langgraph_joke_generator, "ChatAnthropic", _fake_chat_model_factory(response=content)
+    )
+
+    generation = LangGraphJokeGenerator().start("cats")
+
+    assert generation.revisions[-1].joke.text == "a joke"
+
+
+def test_refine_extracts_the_text_blocks_of_the_response(monkeypatch):
+    monkeypatch.setattr(
+        langgraph_joke_generator,
+        "ChatAnthropic",
+        _fake_chat_model_factory(
+            response=[{"type": "thinking", "thinking": "hmm"}, {"type": "text", "text": "a rewritten joke"}]
+        ),
+    )
+
+    refined = LangGraphJokeGenerator().refine(_a_generation(), RewriteStyle.DARK_CRUDE)
+
+    assert refined.revisions[-1].joke.text == "a rewritten joke"
+
+
+

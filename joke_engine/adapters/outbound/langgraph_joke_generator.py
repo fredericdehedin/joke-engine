@@ -38,6 +38,28 @@ class _GraphState(TypedDict):
     joke_text: str
 
 
+def _extract_text(content) -> str:
+    """Join the text blocks of a response.
+
+    langchain_anthropic only sets ``content`` to a plain string when the reply
+    holds exactly one text block; with thinking enabled (which `output_config`
+    turns on) it is a list of blocks instead.
+    """
+    if isinstance(content, str):
+        return content
+
+    parts = []
+    for block in content:
+        if isinstance(block, str):
+            parts.append(block)
+        elif isinstance(block, dict):
+            if block.get("type") == "text":
+                parts.append(block.get("text", ""))
+        elif getattr(block, "type", None) == "text":
+            parts.append(block.text)
+    return "".join(parts)
+
+
 def _generate(state: _GraphState) -> dict:
     model = resolve_model()
     model_kwargs = {}
@@ -51,7 +73,7 @@ def _generate(state: _GraphState) -> dict:
             HumanMessage(content=state["user_message"]),
         ]
     )
-    return {"joke_text": response.content}
+    return {"joke_text": _extract_text(response.content)}
 
 
 def _build_graph():
