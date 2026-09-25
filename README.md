@@ -26,4 +26,5 @@
 python tell_me_a_joke.py
 ```
 
-You'll be prompted to enter a joke topic, and the engine will print a joke back.
+You'll be prompted to enter a joke topic. After each joke, you can accept it, ask for a
+dark & crude or clean & clever rewrite, or quit.

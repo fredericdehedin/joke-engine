@@ -1,3 +1,5 @@
 pytest
 anthropic
 python-dotenv
+langgraph
+langchain-anthropic
