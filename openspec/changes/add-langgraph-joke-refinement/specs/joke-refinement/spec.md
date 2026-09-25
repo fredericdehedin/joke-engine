@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Lets a user iterate on a generated joke for a topic by reviewing it and requesting revisions with feedback, instead of only ever getting the first attempt.
+Lets a user iterate on a generated joke for a topic by reviewing it and requesting a rewrite in a chosen style, instead of only ever getting the first attempt.
 
 ## ADDED Requirements
 
@@ -20,22 +20,26 @@ The system SHALL, when the user accepts the presented joke, treat it as final, d
 - **WHEN** the system presents a joke and the user accepts it
 - **THEN** the system displays that joke as the final result and does not ask for further feedback
 
-### Requirement: Request a revision with feedback
-The system SHALL, when the user declines the presented joke and supplies feedback describing what to change, generate a new joke for the same topic that takes that feedback into account, and present the new joke for review in place of the previous one.
+### Requirement: Request a revision in a chosen rewrite style
+The system SHALL, when the user declines the presented joke, offer exactly two rewrite styles - "dark & crude" and "clean & clever" - and, once the user picks one, generate a new joke that rewrites the presented joke in that style while keeping the same topic, then present the new joke for review in place of the previous one.
 
-#### Scenario: User requests a revision
-- **WHEN** the system presents a joke and the user declines it with feedback such as "make it shorter"
-- **THEN** the system generates a new joke about the same topic that accounts for that feedback and presents it for review
+#### Scenario: User requests a dark & crude rewrite
+- **WHEN** the system presents a joke and the user declines it and picks the "dark & crude" style
+- **THEN** the system generates a new joke about the same topic rewritten in a darker, cruder tone and presents it for review
+
+#### Scenario: User requests a clean & clever rewrite
+- **WHEN** the system presents a joke and the user declines it and picks the "clean & clever" style
+- **THEN** the system generates a new joke about the same topic rewritten in a cleaner, more clever tone and presents it for review
 
 ### Requirement: Repeat review until accepted or stopped
-The system SHALL keep presenting revised jokes and requesting accept-or-feedback decisions until the user either accepts a joke or explicitly stops the review loop.
+The system SHALL keep presenting rewritten jokes and requesting accept-or-choose-a-style decisions until the user either accepts a joke or explicitly stops the review loop.
 
 #### Scenario: Multiple rounds of revision
-- **WHEN** the user declines two revised jokes in a row with feedback each time
-- **THEN** the system generates and presents a new joke after each round of feedback, without limiting the number of revisions
+- **WHEN** the user declines two rewritten jokes in a row, picking a rewrite style each time
+- **THEN** the system generates and presents a new joke after each style pick, without limiting the number of revisions
 
 #### Scenario: User stops without accepting
-- **WHEN** the system presents a joke and the user explicitly stops the review loop instead of accepting or giving feedback
+- **WHEN** the system presents a joke and the user explicitly stops the review loop instead of accepting or picking a rewrite style
 - **THEN** the system ends the session without displaying any joke as final
 
 ### Requirement: Handle joke generation failures during review
@@ -46,5 +50,5 @@ The system SHALL, if generating the initial joke or any revision fails for any r
 - **THEN** the system prints an error message describing that the joke could not be generated, without a raw stack trace, and does not present a joke for review
 
 #### Scenario: Revision fails after prior joke was already generated
-- **WHEN** the user provides feedback to revise a previously presented joke and generating the revision fails
+- **WHEN** the user picks a rewrite style to revise a previously presented joke and generating the revision fails
 - **THEN** the system prints an error message describing that the revision could not be generated, without a raw stack trace, and does not present a new joke for review
