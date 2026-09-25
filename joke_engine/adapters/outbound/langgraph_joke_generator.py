@@ -39,6 +39,15 @@ class _GraphState(TypedDict):
     joke_text: str
 
 
+def _create_chat_model() -> ChatAnthropic:
+    model = resolve_model()
+    model_kwargs = {}
+    if model_supports_effort(model):
+        model_kwargs["output_config"] = {"effort": resolve_effort()}
+
+    return ChatAnthropic(model=model, max_tokens=512, **model_kwargs)
+
+
 def _extract_text(content) -> str:
     """Join the text blocks of a response.
 
@@ -75,25 +84,18 @@ def _as_generation_error():
         raise JokeGenerationError(f"the model returned an unusable joke: {e}") from e
 
 
-def _generate(state: _GraphState) -> dict:
-    model = resolve_model()
-    model_kwargs = {}
-    if model_supports_effort(model):
-        model_kwargs["output_config"] = {"effort": resolve_effort()}
+def _build_graph(get_chat_model):
+    def generate(state: _GraphState) -> dict:
+        response = get_chat_model().invoke(
+            [
+                SystemMessage(content=state["system_prompt"]),
+                HumanMessage(content=state["user_message"]),
+            ]
+        )
+        return {"joke_text": _extract_text(response.content)}
 
-    chat_model = ChatAnthropic(model=model, max_tokens=512, **model_kwargs)
-    response = chat_model.invoke(
-        [
-            SystemMessage(content=state["system_prompt"]),
-            HumanMessage(content=state["user_message"]),
-        ]
-    )
-    return {"joke_text": _extract_text(response.content)}
-
-
-def _build_graph():
     graph = StateGraph(_GraphState)
-    graph.add_node("generate", _generate)
+    graph.add_node("generate", generate)
     graph.add_edge(START, "generate")
     graph.add_edge("generate", END)
     return graph.compile()
@@ -103,7 +105,15 @@ class LangGraphJokeGenerator:
     """Outbound adapter implementing the JokeGenerator port via LangGraph + Anthropic."""
 
     def __init__(self) -> None:
-        self._graph = _build_graph()
+        self._chat_model = None
+        self._graph = _build_graph(self._get_chat_model)
+
+    def _get_chat_model(self) -> ChatAnthropic:
+        # Built on first use and reused afterwards, so a multi-round session
+        # doesn't open a fresh HTTP connection pool per rewrite.
+        if self._chat_model is None:
+            self._chat_model = _create_chat_model()
+        return self._chat_model
 
     def start(self, topic: str) -> JokeGeneration:
         joke_text = self._run(SYSTEM_PROMPT, f"Tell me a joke about: {topic}")

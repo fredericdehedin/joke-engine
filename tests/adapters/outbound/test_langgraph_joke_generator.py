@@ -13,6 +13,7 @@ from joke_engine.ports.joke_generator import JokeGenerationError, JokeGenerator
 
 class FakeChatModel:
     last_instance = None
+    instances = []
 
     def __init__(self, response=None, exception=None, **kwargs):
         self._response = response
@@ -20,6 +21,7 @@ class FakeChatModel:
         self.init_kwargs = kwargs
         self.invoked_messages = None
         FakeChatModel.last_instance = self
+        FakeChatModel.instances.append(self)
 
     def invoke(self, messages):
         self.invoked_messages = messages
@@ -29,6 +31,8 @@ class FakeChatModel:
 
 
 def _fake_chat_model_factory(response=None, exception=None):
+    FakeChatModel.instances = []
+
     def factory(**kwargs):
         return FakeChatModel(response=response, exception=exception, **kwargs)
 
@@ -128,32 +132,6 @@ def test_refine_wraps_api_failure_in_joke_generation_error(monkeypatch):
         LangGraphJokeGenerator().refine(generation, RewriteStyle.DARK_CRUDE)
 
 
-@pytest.mark.parametrize(
-    "content",
-    [
-        pytest.param("   ", id="whitespace only"),
-        pytest.param("", id="empty"),
-        pytest.param([{"type": "thinking", "thinking": "hmm"}], id="no text block"),
-    ],
-)
-def test_start_wraps_an_unusable_response_in_joke_generation_error(monkeypatch, content):
-    monkeypatch.setattr(
-        langgraph_joke_generator, "ChatAnthropic", _fake_chat_model_factory(response=content)
-    )
-
-    with pytest.raises(JokeGenerationError):
-        LangGraphJokeGenerator().start("cats")
-
-
-def test_refine_wraps_an_unusable_response_in_joke_generation_error(monkeypatch):
-    monkeypatch.setattr(
-        langgraph_joke_generator, "ChatAnthropic", _fake_chat_model_factory(response="   ")
-    )
-
-    with pytest.raises(JokeGenerationError):
-        LangGraphJokeGenerator().refine(_a_generation(), RewriteStyle.DARK_CRUDE)
-
-
 def test_default_model_and_effort_are_cost_efficient(monkeypatch):
     monkeypatch.delenv("JOKE_ENGINE_MODEL", raising=False)
     monkeypatch.delenv("JOKE_ENGINE_EFFORT", raising=False)
@@ -225,4 +203,49 @@ def test_refine_extracts_the_text_blocks_of_the_response(monkeypatch):
     assert refined.revisions[-1].joke.text == "a rewritten joke"
 
 
+@pytest.mark.parametrize(
+    "content",
+    [
+        pytest.param("   ", id="whitespace only"),
+        pytest.param("", id="empty"),
+        pytest.param([{"type": "thinking", "thinking": "hmm"}], id="no text block"),
+    ],
+)
+def test_start_wraps_an_unusable_response_in_joke_generation_error(monkeypatch, content):
+    monkeypatch.setattr(
+        langgraph_joke_generator, "ChatAnthropic", _fake_chat_model_factory(response=content)
+    )
 
+    with pytest.raises(JokeGenerationError):
+        LangGraphJokeGenerator().start("cats")
+
+
+def test_refine_wraps_an_unusable_response_in_joke_generation_error(monkeypatch):
+    monkeypatch.setattr(
+        langgraph_joke_generator, "ChatAnthropic", _fake_chat_model_factory(response="   ")
+    )
+
+    with pytest.raises(JokeGenerationError):
+        LangGraphJokeGenerator().refine(_a_generation(), RewriteStyle.DARK_CRUDE)
+
+
+def test_chat_model_is_reused_across_rounds(monkeypatch):
+    monkeypatch.setattr(
+        langgraph_joke_generator, "ChatAnthropic", _fake_chat_model_factory(response="a joke")
+    )
+    generator = LangGraphJokeGenerator()
+
+    generation = generator.start("cats")
+    generator.refine(generation, RewriteStyle.DARK_CRUDE)
+
+    assert len(FakeChatModel.instances) == 1
+
+
+def test_chat_model_is_not_built_until_first_use(monkeypatch):
+    monkeypatch.setattr(
+        langgraph_joke_generator, "ChatAnthropic", _fake_chat_model_factory(response="a joke")
+    )
+
+    LangGraphJokeGenerator()
+
+    assert FakeChatModel.instances == []
