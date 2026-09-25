@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import anthropic
 import httpx2
 import pytest
+from langchain_core.messages import AIMessage, HumanMessage
 
 from joke_engine.adapters.outbound import langgraph_joke_generator
 from joke_engine.adapters.outbound.langgraph_joke_generator import LangGraphJokeGenerator
@@ -103,7 +104,8 @@ def test_refine_appends_revision_with_style_prompt(monkeypatch, style):
     assert refined.revisions[-1].joke.text == "a rewritten joke"
     system_message, human_message = FakeChatModel.last_instance.invoked_messages
     assert system_message.content == langgraph_joke_generator.REWRITE_SYSTEM_PROMPTS[style]
-    assert human_message.content == "original joke"
+    assert "original joke" in human_message.content
+    assert "cats" in human_message.content
 
 
 def test_start_wraps_api_failure_in_joke_generation_error(monkeypatch):
@@ -227,6 +229,77 @@ def test_refine_wraps_an_unusable_response_in_joke_generation_error(monkeypatch)
 
     with pytest.raises(JokeGenerationError):
         LangGraphJokeGenerator().refine(_a_generation(), RewriteStyle.DARK_CRUDE)
+
+
+def _refine_messages(monkeypatch, generation, style=RewriteStyle.DARK_CRUDE):
+    monkeypatch.setattr(
+        langgraph_joke_generator, "ChatAnthropic", _fake_chat_model_factory(response="a rewritten joke")
+    )
+
+    LangGraphJokeGenerator().refine(generation, style)
+
+    system_message, *conversation = FakeChatModel.last_instance.invoked_messages
+    return conversation
+
+
+def test_refine_sends_the_topic_with_the_joke_to_rewrite(monkeypatch):
+    # The rewrite prompts require the topic to stay central, so it can't be
+    # left for the model to infer from the joke text.
+    conversation = _refine_messages(monkeypatch, _a_generation("original joke"))
+
+    assert len(conversation) == 1
+    assert isinstance(conversation[0], HumanMessage)
+    assert "cats" in conversation[0].content
+    assert "original joke" in conversation[0].content
+
+
+def test_refine_replays_earlier_rewrites_as_the_model_s_own_turns(monkeypatch):
+    generation = JokeGeneration(
+        topic="cats",
+        revisions=(
+            Revision(joke=Joke(topic="cats", text="original joke"), style=None),
+            Revision(joke=Joke(topic="cats", text="first rewrite"), style=RewriteStyle.DARK_CRUDE),
+            Revision(joke=Joke(topic="cats", text="second rewrite"), style=RewriteStyle.DARK_CRUDE),
+        ),
+    )
+
+    conversation = _refine_messages(monkeypatch, generation)
+
+    kinds = [type(message) for message in conversation]
+    assert kinds == [HumanMessage, AIMessage, HumanMessage, AIMessage, HumanMessage]
+    assert "original joke" in conversation[0].content
+    assert conversation[1].content == "first rewrite"
+    assert conversation[3].content == "second rewrite"
+    # Every prior attempt is followed by an explicit push past it.
+    assert "further" in conversation[2].content
+    assert "further" in conversation[4].content
+
+
+def test_refine_replays_rewrites_made_in_a_different_style(monkeypatch):
+    generation = JokeGeneration(
+        topic="cats",
+        revisions=(
+            Revision(joke=Joke(topic="cats", text="original joke"), style=None),
+            Revision(joke=Joke(topic="cats", text="a polished rewrite"), style=RewriteStyle.CLEAN_CLEVER),
+        ),
+    )
+
+    conversation = _refine_messages(monkeypatch, generation, RewriteStyle.DARK_CRUDE)
+
+    assert conversation[1].content == "a polished rewrite"
+
+
+def test_start_sends_only_the_topic_request(monkeypatch):
+    monkeypatch.setattr(
+        langgraph_joke_generator, "ChatAnthropic", _fake_chat_model_factory(response="a joke")
+    )
+
+    LangGraphJokeGenerator().start("cats")
+
+    system_message, *conversation = FakeChatModel.last_instance.invoked_messages
+    assert len(conversation) == 1
+    assert isinstance(conversation[0], HumanMessage)
+    assert "cats" in conversation[0].content
 
 
 def test_chat_model_is_reused_across_rounds(monkeypatch):

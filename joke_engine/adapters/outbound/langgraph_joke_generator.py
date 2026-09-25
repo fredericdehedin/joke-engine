@@ -5,7 +5,7 @@ from typing import TypedDict
 
 import anthropic
 from langchain_anthropic import ChatAnthropic
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langgraph.graph import END, START, StateGraph
 
 from joke_engine.domain.joke import Joke, JokeGeneration, Revision, RewriteStyle
@@ -35,8 +35,35 @@ def model_supports_effort(model: str) -> bool:
 
 class _GraphState(TypedDict):
     system_prompt: str
-    user_message: str
+    messages: list[BaseMessage]
     joke_text: str
+
+
+def _rewrite_request(topic: str, joke_text: str) -> str:
+    return f"Topic: {topic}\n\nRewrite this joke:\n\n{joke_text}"
+
+
+def _escalation_request(topic: str) -> str:
+    return (
+        "That version doesn't go far enough. Rewrite it again and push it "
+        f"further than every attempt above, keeping {topic} as the central subject."
+    )
+
+
+def _rewrite_conversation(generation: JokeGeneration) -> list[BaseMessage]:
+    """Replay the revision chain as a conversation.
+
+    Each earlier rewrite comes back as the model's own turn, so it can see how
+    far it has already pushed and go beyond it instead of restating it.
+    """
+    original = generation.revisions[0].joke
+    messages: list[BaseMessage] = [
+        HumanMessage(content=_rewrite_request(generation.topic, original.text))
+    ]
+    for revision in generation.revisions[1:]:
+        messages.append(AIMessage(content=revision.joke.text))
+        messages.append(HumanMessage(content=_escalation_request(generation.topic)))
+    return messages
 
 
 def _create_chat_model() -> ChatAnthropic:
@@ -87,10 +114,7 @@ def _as_generation_error():
 def _build_graph(get_chat_model):
     def generate(state: _GraphState) -> dict:
         response = get_chat_model().invoke(
-            [
-                SystemMessage(content=state["system_prompt"]),
-                HumanMessage(content=state["user_message"]),
-            ]
+            [SystemMessage(content=state["system_prompt"]), *state["messages"]]
         )
         return {"joke_text": _extract_text(response.content)}
 
@@ -116,14 +140,15 @@ class LangGraphJokeGenerator:
         return self._chat_model
 
     def start(self, topic: str) -> JokeGeneration:
-        joke_text = self._run(SYSTEM_PROMPT, f"Tell me a joke about: {topic}")
+        joke_text = self._run(
+            SYSTEM_PROMPT, [HumanMessage(content=f"Tell me a joke about: {topic}")]
+        )
         with _as_generation_error():
             joke = Joke(topic=topic, text=joke_text)
             return JokeGeneration(topic=topic, revisions=(Revision(joke=joke, style=None),))
 
     def refine(self, generation: JokeGeneration, style: RewriteStyle) -> JokeGeneration:
-        latest_joke = generation.revisions[-1].joke
-        joke_text = self._run(REWRITE_SYSTEM_PROMPTS[style], latest_joke.text)
+        joke_text = self._run(REWRITE_SYSTEM_PROMPTS[style], _rewrite_conversation(generation))
         with _as_generation_error():
             joke = Joke(topic=generation.topic, text=joke_text)
             return JokeGeneration(
@@ -131,10 +156,10 @@ class LangGraphJokeGenerator:
                 revisions=generation.revisions + (Revision(joke=joke, style=style),),
             )
 
-    def _run(self, system_prompt: str, user_message: str) -> str:
+    def _run(self, system_prompt: str, messages: list[BaseMessage]) -> str:
         try:
             result = self._graph.invoke(
-                {"system_prompt": system_prompt, "user_message": user_message, "joke_text": ""}
+                {"system_prompt": system_prompt, "messages": messages, "joke_text": ""}
             )
         except anthropic.AuthenticationError as e:
             raise JokeGenerationError("invalid or missing API key.") from e
