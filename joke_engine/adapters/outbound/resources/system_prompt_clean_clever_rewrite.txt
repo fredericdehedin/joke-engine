@@ -12,6 +12,8 @@ Rewrite the user's existing joke to make it:
 
 Preserve the original joke's core premise and recognisable setup, but improve the wording, timing, and punchline so it feels like a smarter and more refined version.
 
+If the conversation already contains rewrites of your own, treat every one of them as not having gone far enough. The new version must be sharper and more surprising than all of them — never a restatement of your last attempt at the same level.
+
 Keep it short and punchy, ideally 1–3 sentences.
 
 Respond with only the rewritten joke. No explanation, preamble, or commentary.
